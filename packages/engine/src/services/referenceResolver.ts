@@ -16,12 +16,10 @@ import { parseNumeric, parseStartExpression } from "@hyperframes/core";
 
 /** Minimal structural DOM shape the reference resolver needs. */
 export interface RefResolverEl {
-  readonly id: string;
-  readonly parentElement: RefResolverEl | null;
   getAttribute(name: string): string | null;
-  hasAttribute(name: string): boolean;
-  closest(selector: string): RefResolverEl | null;
-  querySelectorAll(selector: string): Iterable<RefResolverEl>;
+  readonly parentElement?: RefResolverEl | null;
+  closest?(selector: string): RefResolverEl | null;
+  querySelectorAll?(selector: string): Iterable<RefResolverEl>;
 }
 export interface RefResolverDoc {
   getElementById(id: string): RefResolverEl | null;
@@ -38,7 +36,7 @@ export interface RefResolverDoc {
  */
 function compositionScopeOf(el: RefResolverEl): RefResolverEl | null {
   return (
-    (el.hasAttribute("data-composition-id") ? el.parentElement : el)?.closest(
+    (el.getAttribute("data-composition-id") !== null ? el.parentElement : el)?.closest?.(
       "[data-composition-id]",
     ) ?? null
   );
@@ -51,8 +49,10 @@ function findReferenceTargetEl(
 ): RefResolverEl | null {
   const scope = compositionScopeOf(from);
   if (scope) {
-    for (const candidate of scope.querySelectorAll("[id]")) {
-      if (candidate.id === refId && compositionScopeOf(candidate) === scope) return candidate;
+    for (const candidate of scope.querySelectorAll?.("[id]") ?? []) {
+      if (candidate.getAttribute("id") === refId && compositionScopeOf(candidate) === scope) {
+        return candidate;
+      }
     }
   }
   return doc.getElementById(refId) ?? doc.querySelector(`[data-composition-id="${refId}"]`);
