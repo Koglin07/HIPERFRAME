@@ -52,6 +52,7 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
 import { writeCaptureFileSync } from "../capture/captureFile.js";
+import { isLocalOnlyBlock } from "../capture/localOnlyRequests.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
@@ -486,6 +487,7 @@ async function captureSnapshots(
     against?: string;
     /** Add to outputDir without clearing it; name each still by its time, not its place in the run. */
     keep?: boolean;
+    localOnly?: boolean;
   },
 ): Promise<string[]> {
   const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
@@ -519,6 +521,15 @@ async function captureSnapshots(
       renderReadyTimeoutMs: opts.timeout ?? 5000,
       renderReadyWarningSuffix: "snapshots may be inaccurate",
       browserGpuMode: opts.browserGpuMode,
+      localOnly: opts.localOnly,
+      beforeNavigate: (page) => {
+        if (!opts.localOnly) return;
+        page.on("requestfailed", (request) => {
+          if (!isLocalOnlyBlock(request.failure()?.errorText)) return;
+          warnings.push(`Blocked by --local-only: ${request.url()}`);
+          console.warn(`   ${c.warn("⚠")} ${request.url()} was blocked by --local-only`);
+        });
+      },
     });
 
     try {
@@ -1061,6 +1072,12 @@ export default defineCommand({
         "Use hardware browser GPU capture; pass --no-browser-gpu for deterministic SwiftShader (default: auto-detect, PRODUCER_BROWSER_GPU_MODE overrides)",
       default: undefined,
     },
+    "local-only": {
+      type: "boolean",
+      description:
+        "Load only the project's own files, data:/blob: URLs and the template CDNs (GSAP, Google Fonts); anything else, from the page, workers, popups or WebSocket, fails and is printed. Workers and popups get CDN hosts by host only",
+      default: false,
+    },
   },
   async run({ args }) {
     if ([args.at, args.range, args.composition].filter((value) => value !== undefined).length > 1)
@@ -1158,6 +1175,7 @@ export default defineCommand({
           browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
           against,
           keep: args.keep === true,
+          localOnly: args["local-only"] === true,
         });
         reportArtifacts(
           "snapshot",

@@ -1,5 +1,6 @@
 import type { CheckDeadline } from "./checkDeadline.js";
 import { BrowserCleanupError, closeManagedBrowser } from "../browser/launch.js";
+import { isLocalOnlyBlock } from "../capture/localOnlyRequests.js";
 import { checkSnapshotDirectory } from "./checkSnapshotDirectory.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -217,6 +218,7 @@ export async function runBrowserCheck(
     const launchSettleStart = Date.now();
     const session = await openSettledCompositionPage(html, server.url, {
       navigationTimeoutMs: options.timeout,
+      localOnly: options.localOnly,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "checking the current page state",
       browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
@@ -296,6 +298,7 @@ export async function captureFindingCrops(
   try {
     const session = await openSettledCompositionPage(html, server.url, {
       navigationTimeoutMs: options.timeout,
+      localOnly: options.localOnly,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "capturing finding crops",
       signal: deadline?.signal,
@@ -541,7 +544,9 @@ function wireNetworkListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
     drafts.push({
       code: "request_failed",
       severity: "error",
-      message: `Failed to load ${urlPath(url)}: ${failure ?? "net::ERR_FAILED"}`,
+      message: isLocalOnlyBlock(failure)
+        ? `${url} was blocked by --local-only`
+        : `Failed to load ${urlPath(url)}: ${failure ?? "net::ERR_FAILED"}`,
       time: currentTime(),
       url,
       abortedImage: failure === "net::ERR_ABORTED" && request.resourceType() === "image",

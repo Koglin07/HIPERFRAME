@@ -28,6 +28,7 @@ export interface CheckOptions {
   /** Explicit --proxy/--no-proxy override; undefined preserves project config. */
   autoProxy?: boolean;
   browserGpuMode?: BrowserGpuMode;
+  localOnly?: boolean;
 }
 
 export interface CaptionZoneOptions {

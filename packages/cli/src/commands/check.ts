@@ -215,6 +215,12 @@ const CHECK_COMMAND_ARGS = {
       "Auto-transcode browser-hostile video codecs (default: hyperframes.json media.autoProxy, which defaults on)",
     default: undefined,
   },
+  "local-only": {
+    type: "boolean",
+    description:
+      "Load only the project's own files, data:/blob: URLs and the template CDNs (GSAP, Google Fonts); anything else, from the page, workers, popups or WebSocket, fails and is reported. Workers and popups get CDN hosts by host only",
+    default: false,
+  },
   "browser-gpu": {
     type: "boolean",
     description:
@@ -313,6 +319,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     layout: parseLayout(args.layout),
     autoProxy: args.proxy as boolean | undefined,
     browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
+    localOnly: args["local-only"] === true,
   };
 }
 

@@ -6,6 +6,11 @@ import {
 import { spawn } from "node:child_process";
 import type { Browser, Page } from "puppeteer-core";
 import type { InProcessRequest, InProcessResponse } from "../utils/staticProjectServer.js";
+import {
+  allowedLocalOnlyRequest,
+  guardLocalOnlyRequests,
+  localOnlyChromeArgs,
+} from "./localOnlyRequests.js";
 import { c } from "../ui/colors.js";
 import {
   assertWebGpuAdapterAvailable,
@@ -91,6 +96,7 @@ export interface OpenSettledCompositionPageOptions {
   // Runs after the page exists but before page.goto, so console/pageerror/
   // request listeners can attach without missing load-time events.
   beforeNavigate?: (page: Page) => void | Promise<void>;
+  localOnly?: boolean;
 }
 
 export interface FfmpegRunResult {
@@ -216,10 +222,13 @@ export async function openSettledCompositionPage(
     options.signal?.throwIfAborted();
     const webGpu = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
     softwareWebGpu = webGpu.softwareWebGpu;
-    const args = buildChromeArgs(
-      { ...viewport, captureMode: "screenshot", requiresWebGpu },
-      webGpu.gpuConfig,
-    );
+    const args = [
+      ...buildChromeArgs(
+        { ...viewport, captureMode: "screenshot", requiresWebGpu },
+        webGpu.gpuConfig,
+      ),
+      ...(options.localOnly ? localOnlyChromeArgs(url) : []),
+    ];
     return launchManagedBrowser(puppeteer.default, {
       headless: true,
       signal: options.signal,
@@ -263,7 +272,8 @@ export async function openSettledCompositionPage(
     const page = await chromeBrowser.newPage();
     await installPageFunctionGuard(page);
     await page.setViewport(viewport);
-    if (answer) await answerPageInProcess(page, url, answer);
+    if (answer) await answerPageInProcess(page, url, answer, options.localOnly === true);
+    else if (options.localOnly) await guardLocalOnlyRequests(page, url);
     await options.beforeNavigate?.(page);
     await page.goto(url, {
       waitUntil: "domcontentloaded",
@@ -605,18 +615,22 @@ export async function runFfmpegOnce(
   });
 }
 
-/** Requests to the in-process origin are answered here; any other request goes on as usual. */
+/** Requests to the in-process origin are answered here; any other request goes on as usual, or under --local-only only if allowed. */
 async function answerPageInProcess(
   page: Page,
   url: string,
   answer: (request: InProcessRequest) => Promise<InProcessResponse>,
+  localOnly: boolean,
 ): Promise<void> {
   const origin = new URL(url).origin;
   await page.setRequestInterception(true);
   page.on("request", (request) => {
     if (request.isInterceptResolutionHandled()) return;
     const target = new URL(request.url());
-    if (target.origin !== origin) return void request.continue().catch(() => {});
+    if (target.origin !== origin) {
+      const blocked = localOnly && !allowedLocalOnlyRequest(request.url(), url);
+      return void (blocked ? request.abort("blockedbyclient") : request.continue()).catch(() => {});
+    }
     answer({
       method: request.method(),
       path: target.pathname + target.search,
@@ -626,3 +640,5 @@ async function answerPageInProcess(
       .catch(() => request.abort("failed").catch(() => {}));
   });
 }
+
+export const _answerPageInProcessForTests = answerPageInProcess;
