@@ -13,25 +13,15 @@
 //      so the caller can screenshot the frame right after with the glyphs
 //      invisible but everything else unchanged. Returns the candidate list
 //      (selector, text, fg, bbox, font metrics).
-//   2. Caller takes ONE screenshot (page.screenshot()) — same number of
-//      screenshots as before, just moved to after prepare() instead of
-//      before it.
+//   2. Caller takes ONE screenshot (page.screenshot()) after prepare().
 //   3. window.__contrastAuditFinish(imgBase64, time, candidates) restores
 //      the original paint FIRST (so a slow/failed decode can't leave the
 //      page's text stuck invisible), then decodes the screenshot and, for
 //      each candidate, samples the real composited pixels directly INSIDE
 //      its own bounding box for the true background.
 //
-// Why sample inside the box instead of the 4px ring just outside it (the
-// previous approach): the ring is a proximity heuristic that's wrong
-// whenever what's immediately outside the text differs from what's actually
-// behind it — a neighboring panel/component just past the text's edge, a
-// rounded pill/button whose corner falls inside the ring, a
-// backdrop-filter-blurred glass panel sized only a couple pixels larger
-// than the text, or a translucent decoration that only partially overlaps
-// the ring (or sits entirely inside the bbox, never touching the ring at
-// all). Hiding the glyphs and sampling their own box side-steps all of
-// that: it reads the exact pixels that were behind them.
+// Sampling inside the box reads the exact pixels behind the glyphs; a ring
+// just outside it would read a neighbouring panel or decoration instead.
 //
 // window.__contrastAuditRestoreIfPending() is a safety net: if the caller's
 // screenshot or finish() call throws between prepare() and finish(), calling
@@ -39,10 +29,7 @@
 // doesn't audit a page with stale invisible text. It's a no-op after a
 // normal finish() call.
 //
-// NOTE: this logic (DOM-walk, foreground/paint-hide, background sampling)
-// plus the pure WCAG math (relLum, wcagRatio, median) is duplicated in
-// skills/hyperframes-creative/scripts/contrast-report.mjs — keep in sync.
-// The pure "which rect to sample" decision is also mirrored in
+// NOTE: the pure "which rect to sample" decision is mirrored in
 // contrast-sample.ts (unit-tested there since this file can't import).
 
 /* eslint-disable */

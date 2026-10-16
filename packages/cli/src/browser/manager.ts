@@ -318,12 +318,12 @@ function whichBinary(name: string): string | undefined {
 }
 
 // Env-var aliases for a caller-supplied browser executable path. The CLI-native
-// name `HYPERFRAMES_BROWSER_PATH` is the canonical spelling (documented via the
-// download-failure hint added in #2443). `PRODUCER_HEADLESS_SHELL_PATH` is the
+// name `HYPERFRAMES_BROWSER_PATH` is the canonical spelling (the
+// download-failure hint documents it). `PRODUCER_HEADLESS_SHELL_PATH` is the
 // engine-side name that per-worker render launches already honor (see
 // `packages/engine/src/services/browserManager.ts` and `render.ts` which even
 // propagates the CLI-resolved executable into it). Docs in
-// `skills/hyperframes-animation/adapters/typegpu.md`,
+// `skills/hyperframes-registry/references/discovery.md`,
 // `packages/gcp-cloud-run/Dockerfile`, and `examples/k8s-jobs/Dockerfile.example`
 // all instruct users to set `PRODUCER_HEADLESS_SHELL_PATH`, so field reports
 // (e.g. `#hyperframes-cli-feedback` ts=1784095034 on win32/x64) hit the case

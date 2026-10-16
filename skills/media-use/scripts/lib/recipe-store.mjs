@@ -35,7 +35,7 @@ import { mergedPreferences } from "./prefs-store.mjs";
 const FRONTMATTER_CONTENT_KEYS = new Set(["message", "audience", "mode"]);
 
 /** BRIEF.md frontmatter keys that describe this run, not the reusable type —
- * a recipe never locks the run's shape, so the intent layer always re-asks. */
+ * a recipe never locks the run's shape, so these are always asked again. */
 const BRIEF_CONTENT_KEYS = new Set(["flow", "storyboard", "message", "audience"]);
 
 /** Per-frame metadata that is content, not structure. */
