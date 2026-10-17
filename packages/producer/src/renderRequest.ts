@@ -57,6 +57,7 @@ export interface RenderRequestOptions {
   videoBitrate?: string;
   videoFrameFormat?: VideoFrameFormat;
   hdrMode?: RenderConfig["hdrMode"];
+  chromaSubsampling?: RenderConfig["chromaSubsampling"];
   variables?: Record<string, unknown>;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
@@ -180,6 +181,7 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
   }
   assertOptionalEnum(options, "strictness", ["strict", "best-effort"]);
   assertOptionalEnum(options, "hdrMode", ["auto", "force-hdr", "force-sdr"]);
+  assertOptionalEnum(options, "chromaSubsampling", ["420", "444"]);
   if (options.videoFrameFormat !== undefined && !isVideoFrameFormat(options.videoFrameFormat)) {
     throw new Error("Render request videoFrameFormat is invalid");
   }
@@ -288,6 +290,11 @@ export function distributedConfigFromRequest(
   }
   if (options.hdrMode === "force-hdr") {
     throw new Error("Distributed render does not support force-hdr");
+  }
+  // Chunk workers lock a 4:2:0 encoder triple into the plan and the CFR assemble
+  // re-encodes yuv420p, so a 4:4:4 request would come back 4:2:0.
+  if (options.chromaSubsampling === "444") {
+    throw new Error("Distributed render does not support chromaSubsampling 444");
   }
   return {
     fps: distributedFps(options.fps),
