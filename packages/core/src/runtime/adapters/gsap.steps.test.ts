@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import gsap from "gsap";
 import { describe, expect, it } from "vitest";
-import { createGsapAdapter, rerenderGsapTimelineAt } from "./gsap";
+import { createGsapAdapter, rerenderGsapTimelineAt, seekGsapTimeline } from "./gsap";
 import type { RuntimeTimelineLike } from "../types";
 
 // Every 0.1 s: hide all three frames, then show one, as frame-by-frame films do.
@@ -528,6 +528,106 @@ describe("gsap adapter just after a tween's start", () => {
       played.timeline.totalTime(frame / 30);
       adapter.seek({ time: frame / 30 });
       expect(seeked.box.y, `frame ${frame}`).toBeCloseTo(played.box.y, 6);
+    }
+  });
+});
+
+describe("seekGsapTimeline", () => {
+  function hiddenAtZero() {
+    const word = document.body.appendChild(document.createElement("span"));
+    let calls = 0;
+    const timeline = gsap.timeline({ paused: true });
+    timeline.set(word, { visibility: "hidden" }, 0);
+    timeline.call(() => void calls++, [], 0);
+    timeline.set(word, { visibility: "visible" }, 0.5);
+    return { word, timeline: timeline as unknown as RuntimeTimelineLike, calls: () => calls };
+  }
+
+  it("renders a never-rendered timeline seeked to the time it sits at", () => {
+    const film = hiddenAtZero();
+    seekGsapTimeline(film.timeline, 0, false);
+    expect(film.word.style.visibility).toBe("hidden");
+  });
+
+  it("redraws a timeline parked at one time once, not on every seek", () => {
+    const film = hiddenAtZero();
+    const real = film.timeline;
+    let moves = 0;
+    const counted = {
+      ...real,
+      time: () => real.time(),
+      totalTime: (time?: number, suppressEvents?: boolean) => {
+        if (time === undefined) return real.totalTime!();
+        moves++;
+        return real.totalTime!(time, suppressEvents);
+      },
+      getChildren: real.getChildren!.bind(real),
+    } as RuntimeTimelineLike;
+    seekGsapTimeline(counted, 0, false);
+    const firstSeekMoves = moves;
+    seekGsapTimeline(counted, 0, false);
+    seekGsapTimeline(counted, 0, false);
+    expect(firstSeekMoves).toBeGreaterThan(1);
+    expect(moves - firstSeekMoves).toBe(2);
+  });
+
+  it("fires a call at that time once across the next seeks", () => {
+    const film = hiddenAtZero();
+    seekGsapTimeline(film.timeline, 0, false);
+    seekGsapTimeline(film.timeline, 0, false);
+    seekGsapTimeline(film.timeline, 0.1, false);
+    expect(film.calls()).toBe(1);
+  });
+});
+
+describe("rerenderGsapTimelineAt with a structure key", () => {
+  // Steps at the root and inside a nested part that starts at 1 s, the shape of a caption track.
+  function film() {
+    const frames = [0, 1, 2].map(() => document.body.appendChild(document.createElement("div")));
+    let calls = 0;
+    const timeline = gsap.timeline({ paused: true });
+    for (let k = 0; k < 20; k++) timeline.set(frames[k % 3]!, { opacity: k % 2 }, k * 0.1);
+    const part = gsap.timeline();
+    for (let k = 0; k < 20; k++) part.set(frames[(k + 1) % 3]!, { x: k }, k * 0.05);
+    part.call(() => void calls++, [], 0.5);
+    timeline.add(part, 1);
+    const state = () => ({
+      dom: frames.map((frame) => frame.getAttribute("style")),
+      calls,
+      marks: (timeline.getChildren(true, true, true) as unknown as GsapMarks[]).map((child) => [
+        child.ratio,
+        child._zTime,
+        child._act,
+      ]),
+    });
+    return { timeline, state };
+  }
+  type GsapMarks = { ratio: number; _zTime?: number; _act?: number };
+
+  it("leaves the film exactly as a re-render that walks every child", () => {
+    const plain = film();
+    const keyed = film();
+    const key = { owner: keyed.timeline, version: "1" };
+    for (let frame = 0; frame <= 150; frame++) {
+      const t = frame / 60;
+      for (const [one, structure] of [
+        [plain, undefined],
+        [keyed, key],
+      ] as const) {
+        one.timeline.totalTime(t, false);
+        rerenderGsapTimelineAt(
+          {
+            totalTime: one.timeline.totalTime.bind(one.timeline),
+            totalDuration: one.timeline.totalDuration.bind(one.timeline),
+            getChildren: one.timeline.getChildren.bind(
+              one.timeline,
+            ) as RuntimeTimelineLike["getChildren"],
+          },
+          t,
+          structure,
+        );
+      }
+      expect(keyed.state()).toEqual(plain.state());
     }
   });
 });

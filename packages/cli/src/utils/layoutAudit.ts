@@ -16,7 +16,9 @@ export type LayoutIssueCode =
   | "canvas_overflow"
   | "container_overflow"
   | "content_overlap"
+  | "visibility_escapes_segment"
   | "text_occluded"
+  | "video_alpha_unread"
   | "text_not_painted"
   | "caption_zone_collision"
   | "frame_out_of_frame"
@@ -61,8 +63,8 @@ export interface LayoutIssue {
   rect: LayoutRect;
   containerRect?: LayoutRect;
   overflow?: LayoutOverflow;
-  /** `text_occluded` only: approximate fraction (0-1) of the occlusion probe
-   * grid that hit an opaque occluder — see layout-audit.browser.js. */
+  /** `text_occluded` only (0-1): probe-grid share hit by an opaque occluder, or behind a
+   * transparent video the most covered word's share under its alpha (layout-audit.browser.js). */
   coveredFraction?: number;
   fixHint?: string;
 }
@@ -203,6 +205,7 @@ const PERSISTENCE_TIERED_CODES: ReadonlySet<LayoutIssueCode> = new Set([
   "canvas_overflow",
   "container_overflow",
   "content_overlap",
+  "visibility_escapes_segment",
   "text_occluded",
   "escaped_container",
   "panel_out_of_canvas",

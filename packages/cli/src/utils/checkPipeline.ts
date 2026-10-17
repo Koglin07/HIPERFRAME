@@ -1,6 +1,10 @@
 import { BrowserCleanupError } from "../browser/launch.js";
 import { CheckDeadline, CheckDeadlineError } from "./checkDeadline.js";
-import { checkSnapshotDirectory } from "./checkSnapshotDirectory.js";
+import {
+  checkSnapshotDirectory,
+  beginCheckSnapshots,
+  finishCheckSnapshots,
+} from "./checkSnapshotDirectory.js";
 import { findingElementKey, groupSampledFindings } from "./checkFindings.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -1227,112 +1231,119 @@ export async function runCheckPipeline(
   options: CheckOptions,
   dependencies: CheckDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<CheckReport> {
-  let lintResult: ProjectLintResult;
-  const lintStartedAt = Date.now();
+  beginCheckSnapshots(project.dir);
   try {
-    lintResult = await dependencies.lintProject(project.dir);
-  } catch (error) {
-    // The linter itself crashed (unreadable file, internal error) — distinct
-    // from lint findings; a runtime-failure code would send the agent hunting
-    // for a script problem that doesn't exist.
-    return failureReport(options, runtimeFailure(error, "check_lint_failure"));
-  }
-  trackLintRun(project.dir, lintResult, {
-    command: "check",
-    durationMs: Date.now() - lintStartedAt,
-    ...(getRunId() !== undefined ? { runId: getRunId() } : {}),
-  });
-
-  const lint = buildLintSection(lintResult);
-  let hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null;
-  let hdrInspection: CheckReport["hdr"]["inspection"] = "available";
-  try {
-    hdrPromotion = await (dependencies.inspectHdrAutoPromotion ?? inspectHdrAutoPromotion)(project);
-  } catch {
-    hdrInspection = "unavailable";
-  }
-  if (shouldBlockRender(true, false, lintResult.totalErrors, lintResult.totalWarnings)) {
-    return buildReport(
-      options,
-      lint,
-      emptyBrowserResult(),
-      { kind: "none" },
-      [],
-      [],
-      hdrPromotion,
-      hdrInspection,
-    );
-  }
-
-  const motion = dependencies.resolveMotionSpec(project.dir);
-  const specFindings =
-    motion.kind === "invalid"
-      ? [
-          findingAtRoot(
-            "motion_spec_invalid",
-            "error",
-            motion.message,
-            relative(project.dir, motion.path) || "index.motion.json",
-          ),
-        ]
-      : [];
-
-  const deadline = new CheckDeadline();
-  let outcome: { kind: "report"; report: CheckReport } | { kind: "failed"; error: unknown };
-  try {
-    let browser: CheckBrowserResult;
+    let lintResult: ProjectLintResult;
+    const lintStartedAt = Date.now();
     try {
-      browser = await deadline.run(() =>
-        dependencies.runBrowserCheck(project, options, motion, deadline),
-      );
+      lintResult = await dependencies.lintProject(project.dir);
     } catch (error) {
-      browser = emptyBrowserResult();
-      browser.runtimeFindings.push(runtimeFailure(error));
+      // The linter itself crashed (unreadable file, internal error) — distinct
+      // from lint findings; a runtime-failure code would send the agent hunting
+      // for a script problem that doesn't exist.
+      return failureReport(options, runtimeFailure(error, "check_lint_failure"));
+    }
+    trackLintRun(project.dir, lintResult, {
+      command: "check",
+      durationMs: Date.now() - lintStartedAt,
+      ...(getRunId() !== undefined ? { runId: getRunId() } : {}),
+    });
+
+    const lint = buildLintSection(lintResult);
+    let hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null;
+    let hdrInspection: CheckReport["hdr"]["inspection"] = "available";
+    try {
+      hdrPromotion = await (dependencies.inspectHdrAutoPromotion ?? inspectHdrAutoPromotion)(
+        project,
+      );
+    } catch {
+      hdrInspection = "unavailable";
+    }
+    if (shouldBlockRender(true, false, lintResult.totalErrors, lintResult.totalWarnings)) {
+      return buildReport(
+        options,
+        lint,
+        emptyBrowserResult(),
+        { kind: "none" },
+        [],
+        [],
+        hdrPromotion,
+        hdrInspection,
+      );
     }
 
-    const snapshotFiles = options.snapshots
-      ? await writeContrastSnapshots(dependencies, project.dir, browser)
-      : [];
-    const report = buildReport(
-      options,
-      lint,
-      browser,
-      motion,
-      specFindings,
-      snapshotFiles,
-      hdrPromotion,
-      hdrInspection,
-    );
-    outcome = {
-      kind: "report",
-      report: options.snapshots
-        ? await withFindingCrops(dependencies, project, options, report, deadline)
-        : report,
-    };
-  } catch (error) {
-    outcome = { kind: "failed", error };
-  }
-  try {
-    await deadline.close();
-  } catch (error) {
-    if (outcome.kind === "failed") {
-      throw new BrowserCleanupError(
-        [outcome.error, error],
-        `${normalizeErrorMessage(outcome.error)}; ${normalizeErrorMessage(error)}`,
+    const motion = dependencies.resolveMotionSpec(project.dir);
+    const specFindings =
+      motion.kind === "invalid"
+        ? [
+            findingAtRoot(
+              "motion_spec_invalid",
+              "error",
+              motion.message,
+              relative(project.dir, motion.path) || "index.motion.json",
+            ),
+          ]
+        : [];
+
+    const deadline = new CheckDeadline();
+    let outcome: { kind: "report"; report: CheckReport } | { kind: "failed"; error: unknown };
+    try {
+      let browser: CheckBrowserResult;
+      try {
+        browser = await deadline.run(() =>
+          dependencies.runBrowserCheck(project, options, motion, deadline),
+        );
+      } catch (error) {
+        browser = emptyBrowserResult();
+        browser.runtimeFindings.push(runtimeFailure(error));
+      }
+
+      const snapshotFiles = options.snapshots
+        ? await writeContrastSnapshots(dependencies, project.dir, browser)
+        : [];
+      const report = buildReport(
+        options,
+        lint,
+        browser,
+        motion,
+        specFindings,
+        snapshotFiles,
+        hdrPromotion,
+        hdrInspection,
       );
+      outcome = {
+        kind: "report",
+        report: options.snapshots
+          ? await withFindingCrops(dependencies, project, options, report, deadline)
+          : report,
+      };
+    } catch (error) {
+      outcome = { kind: "failed", error };
     }
-    const report = outcome.report;
-    return {
-      ...report,
-      ok: false,
-      runtime: section([
-        ...report.runtime.findings,
-        runtimeFailure(error, "check_cleanup_failure"),
-      ]),
-    };
+    try {
+      await deadline.close();
+    } catch (error) {
+      if (outcome.kind === "failed") {
+        throw new BrowserCleanupError(
+          [outcome.error, error],
+          `${normalizeErrorMessage(outcome.error)}; ${normalizeErrorMessage(error)}`,
+        );
+      }
+      const report = outcome.report;
+      return {
+        ...report,
+        ok: false,
+        runtime: section([
+          ...report.runtime.findings,
+          runtimeFailure(error, "check_cleanup_failure"),
+        ]),
+      };
+    }
+    if (outcome.kind === "failed") throw outcome.error;
+    return outcome.report;
+  } finally {
+    await finishCheckSnapshots(project.dir).catch(() => undefined);
   }
-  if (outcome.kind === "failed") throw outcome.error;
-  return outcome.report;
 }
 
 /** Persists the contrast pass's already-captured overview PNGs (or the
