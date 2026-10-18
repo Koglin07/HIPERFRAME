@@ -28,6 +28,8 @@ type PathModuleLike = {
   isAbsolute: (path: string) => boolean;
 };
 
+const LEADING_PARENT_SEGMENT_RE = /^\.\.(?:[\\/]|$)/;
+
 type IsPathInsideOptions = {
   pathModule?: PathModuleLike;
 };
@@ -58,9 +60,8 @@ export function isPathInside(
   const rel = relativePath(absParent, absChild);
   // `relative()` returns "" when paths are equal, ".." or "..\\foo" when child
   // is above the parent, and an absolute path when they live on different
-  // drives/volumes (Windows) — none of which count as "inside". Only a whole
-  // `..` segment climbs out; `..assets/` is an ordinary child name.
-  return rel !== "" && !/^\.\.(?:[\\/]|$)/.test(rel) && !isPathAbsolute(rel);
+  // drives/volumes (Windows) — none of which count as "inside".
+  return rel !== "" && !LEADING_PARENT_SEGMENT_RE.test(rel) && !isPathAbsolute(rel);
 }
 
 /**
