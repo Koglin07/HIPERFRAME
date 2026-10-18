@@ -45,6 +45,10 @@ When you edit an existing project, bracket your edits with project history (`/hy
 
 If a fresh request does not identify the subject or input, ask what the video is about before routing. Check preferences and recipes before asking anything (`references/intent-interview.md`, step 1). A `figma.com` input or a named recipe changes intake, not routing — the interview's "Adapt orthogonal inputs" section handles both.
 
+### Check local video dependencies early
+
+Before designing a locally rendered video, follow [the CLI's dependency check](../hyperframes-cli/references/doctor-browser.md#check-local-video-dependencies-before-design) after project setup or resume; fresh setup still writes `BRIEF.md` first. Check **FFmpeg** and **FFprobe** individually and retain the result for the run; other project operations and deck, source-port, or explicit cloud-render work follow their own prerequisites.
+
 ### Keep the project's CLI current
 
 A scaffolded project pins `hyperframes@<version>` in its `package.json` scripts so renders stay reproducible; the pin never advances on its own, and a pinned run of an older CLI prints no warning about it. When resuming a project whose scripts carry a pin, probe once before the first render-affecting command:
