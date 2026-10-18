@@ -247,10 +247,6 @@ function samePromiseSet(a: PromiseLike<unknown>[], b: PromiseLike<unknown>[] | n
   return b !== null && a.length === b.length && a.every((p, i) => p === b[i]);
 }
 
-// `Promise.all` allocates a fresh promise every call, so comparing ITS
-// identity across repeat polls is never stable — that re-arms a `.then()`
-// on every poll and never lets the caller observe "settled", even once the
-// underlying work is done. Compares the source promises themselves instead.
 class BuildReadyRejection extends Error {
   constructor(
     readonly key: string,
@@ -260,6 +256,10 @@ class BuildReadyRejection extends Error {
   }
 }
 
+// `Promise.all` allocates a fresh promise every call, so comparing ITS
+// identity across repeat polls is never stable — that re-arms a `.then()`
+// on every poll and never lets the caller observe "settled", even once the
+// underlying work is done. Compares the source promises themselves instead.
 function createSettledTracker(
   collectPromises: () => PromiseLike<unknown>[],
   onSettled: () => void,
