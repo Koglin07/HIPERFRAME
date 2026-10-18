@@ -167,7 +167,14 @@ if (only.has("tts") && lines.length) {
       return null;
     }
     let wordArr = words; // heygen: native; else transcribe
-    if (!wordArr) wordArr = await transcribeWav({ wavRel: rel, lang, hyperframesDir });
+    if (!wordArr) {
+      wordArr = await transcribeWav({ wavRel: rel, lang, hyperframesDir });
+      // null: `hyperframes transcribe` failed (e.g. no whisper-cpp/Parakeet) or found no words.
+      if (!wordArr)
+        anomalies.push(
+          `line ${id}: no word timings — transcription failed or found no words (run \`npx hyperframes transcribe ${rel}\` to see why)`,
+        );
+    }
     const dur = ffprobeDuration(abs);
     if (!isFinite(dur) || dur <= 0) {
       anomalies.push(`line ${id}: bad voice duration — omitted`);
