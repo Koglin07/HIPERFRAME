@@ -1018,6 +1018,7 @@ export interface BuildChromeArgsOptions {
 
 const CANVAS_DRAW_ELEMENT_FEATURE_FLAG = "--enable-features=CanvasDrawElement";
 const WEBGPU_FLAG = "--enable-unsafe-webgpu";
+const DISABLE_DXC_FLAG = "--disable-dawn-features=use_dxc";
 
 type GpuConfig = Partial<
   Pick<EngineConfig, "browserGpuMode" | "disableGpu" | "chromePath" | "allowSoftwareWebGpu">
@@ -1100,6 +1101,10 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
 
   if (browserGpuMode !== "software" || options.requiresWebGpu) {
     chromeArgs.push(WEBGPU_FLAG);
+    if (platform === "win32") {
+      // The downloaded headless shell omits DXC DLLs that Dawn's D3D12 backend loads during requestDevice.
+      chromeArgs.push(DISABLE_DXC_FLAG);
+    }
   }
   if (softwareWebGpu) chromeArgs.push("--use-vulkan=swiftshader");
 
