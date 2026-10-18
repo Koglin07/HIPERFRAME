@@ -41,7 +41,8 @@ export function isPathInside(childPath: string, parentPath: string): boolean {
   const absParent = resolve(parentPath);
   if (absChild === absParent) return true;
   const rel = relative(absParent, absChild);
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  // Only a whole `..` segment climbs out; `..assets/` is an ordinary child name.
+  return rel !== "" && !/^\.\.(?:[\\/]|$)/.test(rel) && !isAbsolute(rel);
 }
 
 export {

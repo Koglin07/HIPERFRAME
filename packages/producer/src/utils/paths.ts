@@ -58,8 +58,9 @@ export function isPathInside(
   const rel = relativePath(absParent, absChild);
   // `relative()` returns "" when paths are equal, ".." or "..\\foo" when child
   // is above the parent, and an absolute path when they live on different
-  // drives/volumes (Windows) — none of which count as "inside".
-  return rel !== "" && !rel.startsWith("..") && !isPathAbsolute(rel);
+  // drives/volumes (Windows) — none of which count as "inside". Only a whole
+  // `..` segment climbs out; `..assets/` is an ordinary child name.
+  return rel !== "" && !/^\.\.(?:[\\/]|$)/.test(rel) && !isPathAbsolute(rel);
 }
 
 /**
