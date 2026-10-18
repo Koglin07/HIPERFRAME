@@ -315,6 +315,42 @@ describe("TimelineToolbar Fit", () => {
     act(() => unregister());
   });
 
+  it("disables zoom-to-selection until a clip is selected", () => {
+    usePlayerStore.setState({ selectedElementId: null, selectedElementIds: new Set() });
+    const { host, root } = renderToolbar();
+    const button = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Select a clip to zoom the timeline"]',
+    );
+    expect(button?.disabled).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("zooms the mounted timeline to the selected clips", () => {
+    const unregister = mountTimelineViewport();
+    usePlayerStore.setState({
+      elements: [{ id: "a", key: "a", tag: "div", start: 10, duration: 20, track: 0 }],
+      selectedElementId: "a",
+      selectedElementIds: new Set(["a"]),
+    });
+    const { host, root } = renderToolbar();
+    act(() => {
+      host
+        .querySelector('button[aria-label="Zoom to selected clips"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    act(() => {
+      for (let i = 0; i < 30; i++) vi.advanceTimersToNextFrame();
+    });
+    expect(usePlayerStore.getState().timelinePps).toBeCloseTo(50);
+    act(() => root.unmount());
+    act(() => unregister());
+    usePlayerStore.setState({
+      elements: [],
+      selectedElementId: null,
+      selectedElementIds: new Set(),
+    });
+  });
+
   it("shows Fit as a named icon and says whether fit is on", () => {
     const { host, root } = renderToolbar();
     const fit = () => host.querySelector('button[aria-label="Fit timeline to width"]');
