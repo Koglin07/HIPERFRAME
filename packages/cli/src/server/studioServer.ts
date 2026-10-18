@@ -639,6 +639,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...(opts.videoBitrate ? { videoBitrate: opts.videoBitrate } : {}),
             ...(opts.videoFrameFormat ? { videoFrameFormat: opts.videoFrameFormat } : {}),
             ...(opts.hdrMode ? { hdrMode: opts.hdrMode } : {}),
+            ...(opts.chromaSubsampling ? { chromaSubsampling: opts.chromaSubsampling } : {}),
             ...(opts.useGpu ? { useGpu: true } : {}),
           });
           renderJob = job;
