@@ -85,6 +85,7 @@ function parseFrameClips(html, frameIds) {
     clips.set(idm[1], {
       id: idm[1],
       block: m[0],
+      src: attrs.match(/\bdata-composition-src="([^"]+)"/)?.[1],
       start: num(/data-start="([\d.]+)"/),
       duration: num(/data-duration="([\d.]+)"/),
       track: num(/data-track-index="(\d+)"/) ?? 0,
@@ -98,7 +99,7 @@ function parseFrameClips(html, frameIds) {
 // the frame root and every non-audio timed element that reached the original
 // storyboard boundary. This also repairs worker files whose root was already
 // inflated while their ground/content clips still ended at the synced duration.
-function extendFrameTail(hyperframesDir, frame, baseDuration, targetDuration, die) {
+function extendFrameTail(hyperframesDir, frame, baseDuration, targetDuration, die, frameId) {
   if (!frame?.src || targetDuration <= baseDuration) return;
   const framePath = join(hyperframesDir, frame.src);
   let html;
@@ -108,10 +109,12 @@ function extendFrameTail(hyperframesDir, frame, baseDuration, targetDuration, di
     die(`outgoing frame file not found at ${framePath}`);
   }
 
-  const compId = frame.src
-    .split("/")
-    .pop()
-    .replace(/\.html?$/i, "");
+  const compId =
+    frameId ??
+    frame.src
+      .split("/")
+      .pop()
+      .replace(/\.html?$/i, "");
   const EPS = 0.011;
   let foundRoot = false;
   let extended = 0;
@@ -238,7 +241,16 @@ function runInject(argv) {
     const T = r3(incoming.start); // cut = incoming start (frames tile)
     const baseDuration = outgoing.duration;
     outgoing.duration = r3(baseDuration + dur); // extend outgoing only
-    extendFrameTail(hyperframesDir, order[i - 1].frame, baseDuration, outgoing.duration, die);
+    for (const src of new Set([order[i - 1].frame.src, outgoing.src].filter(Boolean))) {
+      extendFrameTail(
+        hyperframesDir,
+        { ...order[i - 1].frame, src },
+        baseDuration,
+        outgoing.duration,
+        die,
+        outgoing.id,
+      );
+    }
     padFrameInternalDuration(
       hyperframesDir,
       order[i - 1].frame.src,
