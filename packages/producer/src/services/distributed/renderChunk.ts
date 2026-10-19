@@ -84,9 +84,8 @@ import {
   PLAN_VIDEOS_META_RELATIVE_PATH,
   type PlanVideosJson,
   readFfmpegVersion,
-  resolvePlanAudioPath,
 } from "./shared.js";
-import { muxChunkWithAudio } from "./chunkAudio.js";
+import { chunkAudioSource, muxChunkWithAudio } from "./chunkAudio.js";
 import { DISTRIBUTED_RENDER_CAPABILITIES, readPlanProtocolV1 } from "./planProtocol.js";
 import { validatePlanV2MaterializedTarget } from "./planV2.js";
 import {
@@ -886,9 +885,10 @@ export async function renderChunk(
         gopSize: framesInChunk,
       });
       if (encoder.chunksCarryAudio) {
+        const audioScratchPath = `${outputChunkPath}.audio.m4a`;
         await muxChunkWithAudio({
           videoPath: videoOnlyPath,
-          audioPath: resolvePlanAudioPath(planDir),
+          audioPath: chunkAudioSource(planDir, chunkIndex, audioScratchPath),
           outputPath: outputChunkPath,
           chunks,
           chunkIndex,
@@ -896,6 +896,7 @@ export async function renderChunk(
           timeoutMs: cfg.ffmpegProcessTimeout,
         });
         rmSync(videoOnlyPath, { force: true });
+        rmSync(audioScratchPath, { force: true });
       }
       encodeStageMs = Date.now() - encodeStarted;
     } finally {
