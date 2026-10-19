@@ -8,7 +8,7 @@ import {
   type PreviewProxyBox,
 } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
+import { probeFirstFrameColour, probeMediaMetadata, type MediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
 import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
@@ -24,7 +24,7 @@ import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
  * caller, and drops the copy while it is still queued with no caller left.
  */
 
-export const PROXY_PARAMS_VERSION = "v5";
+export const PROXY_PARAMS_VERSION = "v6";
 
 export const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -408,6 +408,12 @@ function stderrReason(stderrTail: string): string {
   return line ? `: ${line.replace(/[.!]+$/, "")}` : "";
 }
 
+function streamMaps(metadata: MediaMetadata): string[] {
+  if (metadata.probeError || metadata.kind !== "video") return [];
+  const audio = metadata.audioTrack === undefined ? [] : ["-map", `0:a:${metadata.audioTrack}`];
+  return ["-map", "0:V:0?", ...audio];
+}
+
 async function runFfmpeg(
   sourcePath: string,
   outputPath: string,
@@ -436,7 +442,7 @@ async function runFfmpeg(
     : [evenScale, `format=${pixelFormat}`].join(",");
 
   return new Promise((resolvePromise, reject) => {
-    const commonArgs = ["-y", "-i", sourcePath, "-vf", videoFilter];
+    const commonArgs = ["-y", "-i", sourcePath, ...streamMaps(metadata), "-vf", videoFilter];
     const h264Args = [
       "-c:v",
       "libx264",
