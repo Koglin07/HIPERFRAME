@@ -659,6 +659,42 @@ describe("detectRenderModeHints", () => {
     expect(result.recommendScreenshot).toBe(true);
   });
 
+  it("routes a capture-motion-blur root to screenshot capture", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-motion-blur="on" data-width="1920" data-height="1080"></div>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.reasons.map((reason) => reason.code)).toEqual(["captureMotionBlur"]);
+    expect(result.recommendScreenshot).toBe(true);
+  });
+
+  it("does not route a root whose motion blur is off", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-motion-blur="off" data-width="1920" data-height="1080"></div>
+</body></html>`;
+
+    expect(detectRenderModeHints(html).reasons).toEqual([]);
+  });
+
+  it("routes a root that did not opt in when capture motion blur is on by default", () => {
+    const plain = `<div data-composition-id="root" data-width="1920" data-height="1080"></div>`;
+    const optedOut = `<div data-composition-id="root" data-motion-blur="off"></div>`;
+    expect(detectRenderModeHints(plain).reasons).toEqual([]);
+    expect(detectRenderModeHints(plain, "default").reasons.map((r) => r.code)).toEqual([
+      "captureMotionBlur",
+    ]);
+    expect(detectRenderModeHints(optedOut, "default").reasons).toEqual([]);
+  });
+
+  it("does not route an opted-in root when the render turns page motion blur off", () => {
+    const html = `<div data-composition-id="root" data-motion-blur="on"></div>`;
+    expect(detectRenderModeHints(html, "off").reasons).toEqual([]);
+  });
+
   it("does not flag htmlInCanvas for plain canvas elements without layoutsubtree", () => {
     const html = `<!DOCTYPE html>
 <html><body>
@@ -715,6 +751,23 @@ describe("detectRenderModeHints", () => {
       expect(result.renderModeHints.reasons).toEqual([]);
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("routes a plain root to screenshots when the render turns capture motion blur on by default", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-page-motion-blur-"));
+    try {
+      const htmlPath = join(projectDir, "index.html");
+      writeFileSync(
+        htmlPath,
+        `<!DOCTYPE html><html><body><div data-composition-id="root" data-width="1920" data-height="1080"></div></body></html>`,
+      );
+      const result = await compileForRender(projectDir, htmlPath, projectDir, {
+        pageMotionBlur: "default",
+      });
+      expect(result.renderModeHints.reasons.map((r) => r.code)).toEqual(["captureMotionBlur"]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
     }
   });
 

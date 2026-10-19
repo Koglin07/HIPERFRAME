@@ -89,6 +89,8 @@ export interface CompileStageInput {
   allowSystemFontCapture?: boolean;
   /** Render-time variable overrides (`--variables`); see CompileForRenderOptions.variables. */
   variables?: Record<string, unknown>;
+  /** See RenderConfig.pageMotionBlur; decides whether the page renders through screenshots. */
+  pageMotionBlur?: "default" | "off";
 }
 
 export interface CompileStageResult {
@@ -171,6 +173,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     allowSystemFontCapture,
     abortSignal,
     variables: input.variables,
+    pageMotionBlur: input.pageMotionBlur,
     animatedGifCacheDir: cfg.extractCacheDir
       ? join(cfg.extractCacheDir, "animated-gif")
       : undefined,

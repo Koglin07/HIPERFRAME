@@ -128,6 +128,7 @@ import {
 } from "../utils/render-success-state.js";
 import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
 import { EXTRACT_CACHE_DIR_DISABLED_ALIASES, type VideoFrameFormat } from "@hyperframes/engine";
+import { renderPageMotionBlur } from "../utils/pageMotionBlur.js";
 import {
   checkOutputResolutionCompatibility,
   suggestMatchingPreset,
@@ -1107,6 +1108,7 @@ async function executeLocalRender(
       workers: options.workers,
       useGpu: options.gpu,
       hdrMode: options.hdrMode,
+      pageMotionBlur: renderPageMotionBlur(),
       crf: options.crf,
       videoBitrate: options.videoBitrate,
       videoFrameFormat: options.videoFrameFormat,

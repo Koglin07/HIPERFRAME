@@ -171,6 +171,11 @@ export interface CaptureOptions {
    * screenshot capture mode; see `services/motionBlur.ts`.
    */
   motionBlur?: MotionBlurOptions;
+  /**
+   * The page's own capture motion blur (`data-motion-blur`): "default" turns it on for roots
+   * that did not opt in, "off" turns it off even for those that did. Absent: opt-in only.
+   */
+  pageMotionBlur?: "default" | "off";
   deviceScaleFactor?: number;
   /**
    * Opt into Chrome's capture-beyond-viewport screenshot path. Leave undefined

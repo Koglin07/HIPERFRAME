@@ -38,6 +38,7 @@ import { isDevMode } from "../utils/env.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import type { ProjectLintResult } from "@hyperframes/lint";
 import { resolveRenderBrowser } from "../browser/preflight.js";
+import { previewMotionBlurPrelude, renderPageMotionBlur } from "../utils/pageMotionBlur.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
@@ -640,6 +641,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...(opts.videoFrameFormat ? { videoFrameFormat: opts.videoFrameFormat } : {}),
             ...(opts.hdrMode ? { hdrMode: opts.hdrMode } : {}),
             ...(opts.useGpu ? { useGpu: true } : {}),
+            pageMotionBlur: renderPageMotionBlur(opts.previewMotionBlur),
           });
           renderJob = job;
           const onProgress = (j: { progress: number; currentStage?: string }) => {
@@ -886,7 +888,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const runtimeSource =
         (await loadRuntimeSource()) ?? readBundleFile(runtimePath)?.toString("utf-8") ?? null;
       if (!runtimeSource) return c.text("runtime not available", 404);
-      return c.body(runtimeSource, 200, {
+      return c.body(previewMotionBlurPrelude() + runtimeSource, 200, {
         "Content-Type": "text/javascript",
         "Cache-Control": "no-store",
       });

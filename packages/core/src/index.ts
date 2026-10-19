@@ -433,3 +433,8 @@ export {
   type HfVfxParam,
   type HfVfxParamValues,
 } from "./vfx.js";
+export {
+  CAPTURE_MOTION_BLUR_CANARY,
+  PAGE_MOTION_BLUR_DEFAULT_GLOBAL,
+  PAGE_MOTION_BLUR_OFF_GLOBAL,
+} from "./pageMotionBlur.js";

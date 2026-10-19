@@ -80,6 +80,14 @@ export const CANARIES: readonly CanaryDefinition[] = [
     owner: "vance",
     sunsetAfter: "2026-09-15",
   },
+  {
+    name: "capture-motion-blur",
+    percentage: 0,
+    description:
+      "Capture motion blur on by default (no data-motion-blur needed), where Studio can preview it.",
+    owner: "vance",
+    sunsetAfter: "2027-01-31",
+  },
 ] as const;
 
 export function findCanary(name: string): CanaryDefinition | undefined {
