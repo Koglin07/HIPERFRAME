@@ -99,6 +99,7 @@ import {
   readFfmpegVersion,
   readProducerVersion,
 } from "./shared.js";
+import { writeChunkAudioSlices } from "./chunkAudio.js";
 import { PLAN_PROTOCOL_V1, type PlanProtocolV1Descriptor } from "./planProtocol.js";
 import {
   measurePlanSizeBreakdown,
@@ -318,6 +319,8 @@ export interface BuildLocalExecutionPlanOptions {
    * formats and with `cfr`, which re-encodes.
    */
   readonly chunksCarryAudio?: boolean;
+  /** With `chunksCarryAudio`, also write each chunk's audio packets to their own file. Plan v2 only. */
+  readonly sliceChunkAudio?: boolean;
 }
 
 export function logPlanStage(log: ProducerLogger, stage: string, startedAt: number): void {
@@ -1465,6 +1468,16 @@ export async function buildLocalExecutionPlan(
     });
     if (!peak.success) throw encoderFailureError("[plan] audio true-peak check failed", peak);
     logPlanStage(log, "audio-peak", stageStarted);
+    if (options.sliceChunkAudio) {
+      stageStarted = Date.now();
+      await writeChunkAudioSlices({
+        audioPath: planAudioPath,
+        planDir,
+        chunks,
+        fps: { num: config.fps, den: 1 },
+      });
+      logPlanStage(log, "audio-slices", stageStarted);
+    }
   }
 
   // ── Locked config ──
