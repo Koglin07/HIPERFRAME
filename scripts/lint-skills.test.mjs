@@ -1,6 +1,6 @@
 // Positive / negative fixture tests for the checkers exported by
 // scripts/lint-skills.ts: SKILL.md frontmatter shape, registry-snapshot item
-// refs, and doc cross-references. Each runs against known inputs and asserts
+// refs, doc cross-references, and skill-root paths. Each runs against known inputs and asserts
 // the violation set matches expectation.
 //
 // Kept in .mjs (not .ts) so `node --test` can execute it via the same runner
@@ -11,7 +11,14 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { headingSlugs, lintDocRefs, lintFrontmatter, lintRegistryItemRefs } from "./lint-skills.ts";
+import {
+  buildSkillIndex,
+  headingSlugs,
+  lintDocRefs,
+  lintFrontmatter,
+  lintRegistryItemRefs,
+  lintSkillPaths,
+} from "./lint-skills.ts";
 
 const wrap = (frontmatter) => `---\n${frontmatter}\n---\n\n# body\n`;
 
@@ -271,7 +278,7 @@ test("doc refs: backticked relative .md path to a missing file is a violation", 
 test("doc refs: bare backticked paths are a KNOWN blind spot, not an accident", () => {
   // A bare `references/<name>.md` without a leading ./ or ../ is skill-root shorthand,
   // another skill's file, or a runtime artifact more often than a file-relative
-  // path. Pinned so the tradeoff is visible in code. See the cross-reference note in lint-skills.ts.
+  // path. Pinned so the tradeoff is visible in code. lintSkillPaths owns bare paths (tests below).
   const file = refFixture();
   assert.deepEqual(lintDocRefs(file, "Read `references/does-not-exist.md`.\n"), []);
 });
@@ -336,4 +343,133 @@ test("heading slugs: GitHub-style lowercasing, punctuation strip, dedupe", () =>
     "# Hello, World!\n## `code` & Stuff\n## Hello, World!\n```\n# not a heading\n```\n",
   );
   assert.deepEqual([...slugs], ["hello-world", "code--stuff", "hello-world-1"]);
+});
+
+// Skill-root paths: a two-skill tree. alpha/ ships references/a.md, scripts/run.mjs and a nested
+// audio/scripts/tool.mjs; beta/ ships references/b.md. `dist` plays the distributed skills/ dir.
+
+function skillsFixture() {
+  const dist = mkdtempSync(join(tmpdir(), "lint-skills-paths-"));
+  for (const dir of [
+    "alpha/references",
+    "alpha/scripts",
+    "alpha/audio/references",
+    "alpha/audio/scripts",
+    "beta/references",
+  ]) {
+    mkdirSync(join(dist, dir), { recursive: true });
+  }
+  for (const name of ["alpha", "beta"]) {
+    writeFileSync(join(dist, name, "SKILL.md"), `---\nname: ${name}\ndescription: d\n---\n`);
+  }
+  writeFileSync(join(dist, "alpha", "references", "a.md"), "# A\n");
+  writeFileSync(join(dist, "alpha", "scripts", "run.mjs"), "\n");
+  writeFileSync(join(dist, "alpha", "audio", "scripts", "tool.mjs"), "\n");
+  writeFileSync(join(dist, "beta", "references", "b.md"), "# B\n");
+  const index = buildSkillIndex(
+    [join(dist, "alpha", "SKILL.md"), join(dist, "beta", "SKILL.md")],
+    dist,
+  );
+  return { dist, index, skill: join(dist, "alpha", "SKILL.md") };
+}
+
+test("skill paths: own-skill, <SKILL_DIR>, and named-skill paths that exist pass", () => {
+  const { index, skill } = skillsFixture();
+  const doc = [
+    "Read `references/a.md`, then run `node <SKILL_DIR>/scripts/run.mjs`.",
+    "Format in `beta/references/b.md`; from a command, `<SKILL_DIR>/../beta/references/b.md`.",
+    "Skills: `/alpha`, `/beta`, and the upstream `/animate-text`.",
+    "",
+  ].join("\n");
+  assert.deepEqual(lintSkillPaths(skill, doc, index), []);
+});
+
+test("skill paths: a missing own-skill path is a violation naming the token", () => {
+  const { index, skill } = skillsFixture();
+  const violations = lintSkillPaths(
+    skill,
+    "# Doc\n\nSee `references/sub-compositions.md`.\n",
+    index,
+  );
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].line, 3);
+  assert.ok(violations[0].message.includes("references/sub-compositions.md"));
+});
+
+test("skill paths: a bare path resolves under a skill named in the same paragraph", () => {
+  const { index, skill } = skillsFixture();
+  // The heygen-com/hyperframes#5025 #11 fix: the skill name sits on the line before the wrapped path.
+  assert.deepEqual(lintSkillPaths(skill, "wiring in `/beta`\n`references/b.md`.\n", index), []);
+  // A blank line ends the paragraph, so the name no longer counts.
+  assert.equal(lintSkillPaths(skill, "wiring in `/beta`\n\n`references/b.md`.\n", index).length, 1);
+});
+
+test("skill paths: a named skill's path must exist in that skill (the /media-use bgm.md shape)", () => {
+  const { index, skill } = skillsFixture();
+  const violations = lintSkillPaths(
+    skill,
+    "Per `beta/b.md` and `/beta` (`references/gone.md`).\n",
+    index,
+  );
+  assert.deepEqual(
+    violations.map((v) => v.message.match(/"([^"]+)"/)[1]),
+    ["beta/b.md", "references/gone.md"],
+  );
+});
+
+test("skill paths: nested module dirs resolve from the referencing file upward", () => {
+  const { dist, index } = skillsFixture();
+  const file = join(dist, "alpha", "audio", "references", "tts.md");
+  assert.deepEqual(
+    lintSkillPaths(file, "Engine: `scripts/tool.mjs` and `scripts/run.mjs`.\n", index),
+    [],
+  );
+});
+
+test("skill paths: paths inside fenced blocks are checked too", () => {
+  const { index, skill } = skillsFixture();
+  const doc = [
+    "```bash",
+    "node <SKILL_DIR>/phases/source/resolve.mjs --plan x.json",
+    "```",
+    "",
+  ].join("\n");
+  const violations = lintSkillPaths(skill, doc, index);
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].line, 2);
+});
+
+test("skill paths: skills/<name>/ is non-portable in the distributed set only", () => {
+  const { dist, index, skill } = skillsFixture();
+  const doc = "python3 skills/beta/references/b.md\n";
+  const violations = lintSkillPaths(skill, doc, index);
+  assert.equal(violations.length, 1);
+  assert.ok(violations[0].message.includes("installed skill"));
+  // A repo-native skill outside the distributed dir runs inside the repo, where the path works.
+  const native = buildSkillIndex([skill], join(dist, "elsewhere"));
+  assert.deepEqual(lintSkillPaths(skill, doc, native), []);
+});
+
+test("skill paths: project paths, placeholders, URLs and extensionless ids are ignored", () => {
+  const { index, skill } = skillsFixture();
+  const doc = [
+    "Write `compositions/scene.html`, `assets/logo.png`, `.hyperframes/x.json`.",
+    "Templates: `references/<id>.md`, `scripts/{name}.mjs`, `references/*.md`, `$SKILL_DIR/x/$Y.mjs`.",
+    "Docs at https://example.com/references/x.md and `references/some-id`.",
+    "",
+  ].join("\n");
+  assert.deepEqual(lintSkillPaths(skill, doc, index), []);
+});
+
+test("skill paths: an unknown hyphenated /skill is a violation; hyphenless /words are not", () => {
+  const { index, skill } = skillsFixture();
+  const violations = lintSkillPaths(skill, "Load `/gamma-skill`; divide by `/fps`.\n", index);
+  assert.equal(violations.length, 1);
+  assert.ok(violations[0].message.includes("/gamma-skill"));
+});
+
+test("skill paths: the skill-paths allow= marker exempts named tokens", () => {
+  const { index, skill } = skillsFixture();
+  const doc = "<!-- skill-paths: allow=references/X.md -->\n\nSee `references/X.md`.\n";
+  assert.deepEqual(lintSkillPaths(skill, doc, index), []);
 });

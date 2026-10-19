@@ -7,6 +7,8 @@ metadata:
 
 # Caption Template — Anatomy (the shared engine)
 
+<!-- skill-paths: allow=templates/ -->
+
 A **caption template** = one complete, reproducible HyperFrames scene:
 
 > **the person (always in frame)** + a **flowing foreground caption** (verbatim, word-by-word, with appear **and** disappear) + a **climax word** (big, behind the speaker, with a designed entrance **and** exit) + a coherent **font / colour / motion** design.
