@@ -58,7 +58,10 @@ import {
   writeUrlDownloadTelemetry,
 } from "../utils/urlDownloader.js";
 import { runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
-import { isFfmpegFilterAvailable } from "../utils/psnrFilterAvailability.js";
+import {
+  isFfmpegFilterAvailable,
+  isFfmpegHwaccelAvailable,
+} from "../utils/psnrFilterAvailability.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
@@ -856,7 +859,7 @@ interface SegmentedExtraction {
   startTime: number;
   fps: number;
   segments: readonly FrameRange[];
-  runOptions: { signal?: AbortSignal; timeout: number };
+  runOptions: { signal?: AbortSignal; stallTimeout: number };
 }
 
 /** Split runs so no single ffmpeg process extracts more than `segmentFrames` frames. */
@@ -988,7 +991,13 @@ export async function extractVideoFramesRange(
   const isHdr = isHdrColorSpaceUtil(metadata.colorSpace);
   const isMacOS = process.platform === "darwin";
   const toneMappedToSdr = options.toneMapHdrToSdr === true && isHdr && (await toneMapsWithZscale());
-  const decodeWithVideoToolbox = isHdr && isMacOS && !toneMappedToSdr;
+  const keepsHdrForChrome = isHdr && isMacOS && !toneMappedToSdr;
+  const decodeWithVideoToolbox =
+    keepsHdrForChrome ||
+    (isMacOS &&
+      !metadata.hasAlpha &&
+      !codecMayHaveAlpha(metadata.videoCodec) &&
+      (await isFfmpegHwaccelAvailable("videotoolbox")));
 
   const sampleAtOutputFps = !options.finalFrameOnly;
   if (options.frameRanges && (!sampleAtOutputFps || metadata.isVFR)) {
@@ -1025,7 +1034,7 @@ export async function extractVideoFramesRange(
   }
 
   const vfFilters: string[] = [];
-  if (decodeWithVideoToolbox) {
+  if (keepsHdrForChrome) {
     vfFilters.push("format=nv12");
   }
   const samplingAt = vfFilters.length;
@@ -1068,7 +1077,7 @@ export async function extractVideoFramesRange(
   if (format === "png") encodeArgs.push("-compression_level", "1");
   encodeArgs.push("-y", outputPattern);
 
-  const runOptions = { signal, timeout: ffmpegProcessTimeout };
+  const runOptions = { signal, stallTimeout: ffmpegProcessTimeout };
   const filterArgsFor = (seek: number): string[] => {
     const filters = [...vfFilters];
     filters.splice(samplingAt, 0, ...samplingFilters(seek));
@@ -1120,8 +1129,8 @@ export async function extractVideoFramesRange(
     const hdrPrefix = options.sdrToHdrTransfer
       ? `SDR→HDR conversion failed (colorspace filter in extract pass, target ${options.sdrToHdrTransfer}): `
       : "";
-    const timedOut = processResult.terminationReason === "deadline";
-    const timeoutSuffix = timedOut ? ` (timed out after ${ffmpegProcessTimeout} ms)` : "";
+    const timedOut = processResult.terminationReason === "inactivity";
+    const timeoutSuffix = timedOut ? ` (no new frame for ${ffmpegProcessTimeout} ms)` : "";
     const diagnostic =
       `${hdrPrefix}FFmpeg exited with code ${processResult.exitCode}${timeoutSuffix}: ` +
       processResult.stderr.slice(-500);

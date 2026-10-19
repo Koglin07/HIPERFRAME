@@ -18,6 +18,8 @@ import {
 export interface RunFfmpegOptions {
   signal?: AbortSignal;
   timeout?: number;
+  /** Replaces `timeout`: ffmpeg is stopped only after this long without a new output frame. */
+  stallTimeout?: number;
   onStderr?: (line: string) => void;
 }
 
@@ -200,11 +202,27 @@ const ABORTED_BEFORE_START: RunFfmpegResult = {
 
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
   if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
-  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
-  const managed = new ManagedChildProcess(spawnFfmpeg(args), {
+  const stallTimeout = opts?.stallTimeout;
+  let framesSeen = -1;
+  const readStats =
+    stallTimeout === undefined
+      ? undefined
+      : ffmpegStatsReader(({ frames }) => {
+          if (frames === undefined || frames <= framesSeen) return;
+          framesSeen = frames;
+          managed.markActivity();
+        });
+  const managed: ManagedChildProcess = new ManagedChildProcess(spawnFfmpeg(args), {
     signal: opts?.signal,
-    deadlineAtMs: Date.now() + timeout,
-    onStderr: opts?.onStderr,
+    ...(stallTimeout === undefined
+      ? { deadlineAtMs: Date.now() + (opts?.timeout ?? DEFAULT_TIMEOUT) }
+      : { inactivityTimeoutMs: stallTimeout }),
+    onStderr: readStats
+      ? (chunk) => {
+          readStats(chunk);
+          opts?.onStderr?.(chunk);
+        }
+      : opts?.onStderr,
   });
   return toResult(await managed.wait());
 }

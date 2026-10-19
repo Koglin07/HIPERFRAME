@@ -185,7 +185,7 @@ export interface EngineConfig {
   // ── FFmpeg timeouts ──────────────────────────────────────────────────
   /** Timeout for FFmpeg frame encoding (ms). Default: 600_000 */
   ffmpegEncodeTimeout: number;
-  /** Timeout for FFmpeg mux/faststart processes (ms). Default: 300_000 */
+  /** FFmpeg mux/faststart timeout (ms); frame extraction uses it as a no-new-frame window. Default: 300_000 */
   ffmpegProcessTimeout: number;
   /**
    * Inactivity timeout for FFmpeg streaming encode (ms). The timer resets on

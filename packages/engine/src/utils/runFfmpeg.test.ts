@@ -263,3 +263,44 @@ describe("a run whose signal already aborted", () => {
     expect(result).toMatchObject({ success: false, terminationReason: "abort" });
   });
 });
+
+describe("runFfmpeg with a stall window", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.doUnmock("child_process");
+    vi.resetModules();
+  });
+
+  async function runPrinting(frameAt: (tick: number) => number, ticks: number) {
+    vi.useFakeTimers();
+    const proc = Object.assign(new EventEmitter(), {
+      stderr: new EventEmitter(),
+      killed: false,
+      kill: vi.fn((signal: NodeJS.Signals) => {
+        proc.emit("close", null, signal);
+        return true;
+      }),
+    });
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn: vi.fn(() => proc) }));
+    const { runFfmpeg } = await import("./runFfmpeg.js");
+    const run = runFfmpeg(["-i", "in.mov", "out_%05d.jpg"], { stallTimeout: 1_000 });
+    for (let tick = 0; tick < ticks; tick++) {
+      proc.stderr.emit("data", `frame=${String(frameAt(tick)).padStart(5)} fps=2.0 q=2.0\r`);
+      await vi.advanceTimersByTimeAsync(600);
+    }
+    if (!proc.kill.mock.calls.length) proc.emit("close", 0, null);
+    return { result: await run, proc };
+  }
+
+  it("lets a run go on past the window while its frame count rises", async () => {
+    const { result, proc } = await runPrinting((tick) => tick + 1, 5);
+    expect(proc.kill).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+  });
+
+  it("stops a run whose frame count stops rising, even while it keeps printing", async () => {
+    const { result } = await runPrinting(() => 5, 5);
+    expect(result).toMatchObject({ success: false, terminationReason: "inactivity" });
+  });
+});
