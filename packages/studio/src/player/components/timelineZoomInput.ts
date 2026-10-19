@@ -9,6 +9,8 @@ import {
   getNextTimelineZoomPercent,
   getTimelinePixelsPerSecond,
   getTimelineZoomPercent,
+  TIMELINE_RANGE_MARGIN_PX,
+  zoomToSelectedClips,
 } from "./timelineZoom";
 
 /** Where a zoom holds its place: `time` stays `x` px from the viewport's left edge. */
@@ -41,7 +43,6 @@ interface ZoomPreview {
   byPerson: boolean;
 }
 
-const RANGE_MARGIN_PX = 24;
 const SMOOTH_ZOOM_MS = 220;
 /** Past this the scaled-up preview turns soft. */
 const MAX_PREVIEW_SCALE = 4;
@@ -329,8 +330,8 @@ const reducedMotion = () =>
 
 /** The stretch a range zoom fills: from `x` px in, `width` px wide, inside the margins. */
 function rangeBox(view: TimelineZoomViewport): { x: number; width: number } {
-  const x = view.contentOrigin + RANGE_MARGIN_PX;
-  return { x, width: Math.max(1, view.scroll.clientWidth - x - RANGE_MARGIN_PX) };
+  const x = view.contentOrigin + TIMELINE_RANGE_MARGIN_PX;
+  return { x, width: Math.max(1, view.scroll.clientWidth - x - TIMELINE_RANGE_MARGIN_PX) };
 }
 
 /** The seconds the timeline shows between its margins: what zoomTimelineToRange would fill. */
@@ -364,16 +365,24 @@ function easeToRange(
   const view = viewport;
   const fitPps = usePlayerStore.getState().timelineFitPps;
   stopEase();
-  if (!view || !(end > start) || !(fitPps > 0) || signal?.aborted)
-    return Promise.resolve("cancelled");
+  const zoom =
+    view && !signal?.aborted
+      ? zoomToSelectedClips({
+          clips: [{ start, end }],
+          viewportWidth: view.scroll.clientWidth,
+          contentOrigin: view.contentOrigin,
+          fitPixelsPerSecond: fitPps,
+        })
+      : null;
+  if (!view || !zoom) return Promise.resolve("cancelled");
   let resolveThis: (result: TimelineZoomResult) => void = () => {};
   const result = new Promise<TimelineZoomResult>((resolve) => (resolveThis = resolve));
   resolveEase = resolveThis;
   signal?.addEventListener("abort", () => resolveEase === resolveThis && stopEase(), {
     once: true,
   });
-  const { x, width } = rangeBox(view);
-  const toPercent = clampTimelineZoomPercent((width / (end - start) / fitPps) * 100, fitPps);
+  const { x } = rangeBox(view);
+  const toPercent = zoom.zoomPercent;
   const finish = () => {
     commitPreview();
     stopEase("done");
@@ -457,4 +466,26 @@ export function zoomTimelineStep(direction: "in" | "out"): void {
   const at = defaultAnchor(view, now.pps, now.left);
   const start = at.time - (at.x - x) / nextPps;
   void easeToRange(start, start + width / nextPps, {}, true);
+}
+
+export function zoomTimelineToSelectedClips(): boolean {
+  const view = viewport;
+  const state = usePlayerStore.getState();
+  if (!view || !(state.timelineFitPps > 0)) return false;
+  const keys = new Set(state.selectedElementIds);
+  if (state.selectedElementId) keys.add(state.selectedElementId);
+  const clips: { start: number; end: number }[] = [];
+  for (const el of state.elements) {
+    if (!keys.has(el.key ?? el.id)) continue;
+    clips.push({ start: el.start, end: el.start + el.duration });
+  }
+  const zoom = zoomToSelectedClips({
+    clips,
+    viewportWidth: view.scroll.clientWidth,
+    contentOrigin: view.contentOrigin,
+    fitPixelsPerSecond: state.timelineFitPps,
+  });
+  if (!zoom) return false;
+  void zoomTimelineToRange(zoom.start, zoom.end);
+  return true;
 }

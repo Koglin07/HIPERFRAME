@@ -2,6 +2,8 @@ import type { ZoomMode } from "../store/playerStore";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
 
 export const MIN_TIMELINE_ZOOM_PERCENT = 10;
+/** Inset so a range zoom does not sit on the viewport edge. Shared with the range box. */
+export const TIMELINE_RANGE_MARGIN_PX = 24;
 const MAX_TIMELINE_FRAME_WIDTH_PX = 48;
 // CapCut-strength steps: one button press / pinch gesture moves the zoom
 // meaningfully (user feedback, twice-doubled: 1.25×/0.8× + 0.0035 felt like
@@ -118,4 +120,52 @@ export function timelineSliderToZoomPercent(slider: number, fitPixelsPerSecond: 
   const logMax = Math.log(getMaxTimelineZoomPercent(fitPixelsPerSecond));
   const logValue = LOG_MIN + (clampedSlider / 100) * (logMax - LOG_MIN);
   return clampTimelineZoomPercent(Math.exp(logValue), fitPixelsPerSecond);
+}
+
+export interface ClipTimeSpan {
+  start: number;
+  end: number;
+}
+
+export interface SelectedClipsZoom {
+  start: number;
+  end: number;
+  zoomPercent: number;
+  scrollLeft: number;
+}
+
+const FIT_TRACK_FUDGE_PX = 2;
+
+export function zoomToSelectedClips(input: {
+  clips: readonly ClipTimeSpan[];
+  viewportWidth: number;
+  contentOrigin: number;
+  fitPixelsPerSecond: number;
+  marginPx?: number;
+}): SelectedClipsZoom | null {
+  const margin = input.marginPx ?? TIMELINE_RANGE_MARGIN_PX;
+  let start = Number.POSITIVE_INFINITY;
+  let end = Number.NEGATIVE_INFINITY;
+  for (const clip of input.clips) {
+    if (!Number.isFinite(clip.start) || !Number.isFinite(clip.end) || !(clip.end > clip.start)) {
+      continue;
+    }
+    if (clip.start < start) start = clip.start;
+    if (clip.end > end) end = clip.end;
+  }
+  const fitPps = input.fitPixelsPerSecond;
+  const viewport = input.viewportWidth;
+  const origin = input.contentOrigin;
+  if (!Number.isFinite(start) || !(end > start)) return null;
+  if (!Number.isFinite(fitPps) || !(fitPps > 0)) return null;
+  if (!Number.isFinite(viewport) || !Number.isFinite(origin) || !(viewport > origin)) return null;
+
+  const usable = Math.max(1, viewport - origin - margin * 2);
+  const zoomPercent = clampTimelineZoomPercent((usable / (end - start) / fitPps) * 100, fitPps);
+  const pps = getTimelinePixelsPerSecond(fitPps, "manual", zoomPercent);
+  const fitTrack = viewport - origin - FIT_TRACK_FUDGE_PX;
+  const contentWidth = origin + fitTrack * Math.max(1, pps / fitPps);
+  const maxLeft = Math.max(0, contentWidth - viewport);
+  const scrollLeft = Math.max(0, Math.min(maxLeft, start * pps - margin));
+  return { start, end, zoomPercent, scrollLeft };
 }
